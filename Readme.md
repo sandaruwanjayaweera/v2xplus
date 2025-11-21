@@ -39,12 +39,12 @@ Management Container:
     
     Refuel Container:
     
-    ![til](./uav_denm/refuel%20container.drawio.png)
+![til](./uav_denm/refuel%20container.drawio.png)
     
     Refuel Accept Container:
     
-    ![til](./uav_denm/refuel%20accept%20container.drawio.png)
+![til](./uav_denm/refuel%20accept%20container.drawio.png)
 
     Refuel Reject Container:
     
-    ![til](./uav_denm/refuel%20reject.drawio.png)
+![til](./uav_denm/refuel%20reject.drawio.png)
