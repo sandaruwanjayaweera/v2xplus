@@ -1,0 +1,219 @@
+-- ============================================================================
+-- UAV-DENM-PDU-Descriptions.asn
+-- Research draft for the V2XPlus UAV-DENM proposed in the dissertation.
+--
+-- This is NOT an ETSI-standardized ASN.1 module and intentionally has no ETSI
+-- object identifier.  Its organization follows ETSI EN 302 637-3 V1.3.1.
+-- Unmodified ETSI data types are imported from ITS-Container (CDD version 2).
+--
+-- Encoding assumption: ASN.1 Unaligned Packed Encoding Rules (UPER).
+--
+-- IMPORTANT: V2XPlus uses an 8-bit a-la-carte type to select the event-specific
+-- payload.  A standards-oriented ASN.1 information-object/table constraint is
+-- used below so that the type field selects the following open type without a
+-- second CHOICE index.  Under PER, an open type is normally encoded with a
+-- length determinant; this overhead must be included in bit-exact packet-size
+-- calculations.
+--
+-- Exact numerical constraints for several newly defined event fields are not
+-- available in the currently supplied thesis text.  Such fields are kept as
+-- explicitly marked unconstrained placeholders rather than silently inventing
+-- ranges.
+-- ============================================================================
+
+UAV-DENM-PDU-Descriptions
+DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+IMPORTS
+    ItsPduHeader,
+    ActionID,
+    TimestampIts,
+    StationType,
+    Latitude,
+    Longitude,
+    PosConfidenceEllipse,
+    AltitudeConfidence,
+    RelevanceDistance,
+    RelevanceTrafficDirection,
+    ValidityDuration,
+    TransmissionInterval,
+    StationID,
+    PathDeltaTime
+FROM ITS-Container {
+    itu-t (0) identified-organization (4) etsi (0) itsDomain (5)
+    wg1 (1) ts (102894) cdd (2) version (2)
+};
+
+-- --------------------------------------------------------------------------
+-- Root UAV-DENM PDU
+-- --------------------------------------------------------------------------
+
+UAVDENM ::= SEQUENCE {
+    header ItsPduHeader,
+    denm UAVDecentralizedEnvironmentalNotificationMessage
+}
+
+-- The dedicated UAV-DENM Message ID is carried by header.messageID.
+-- No numeric value is assigned here because no standardized/reserved value has
+-- been assigned in the dissertation.
+
+UAVDecentralizedEnvironmentalNotificationMessage ::= SEQUENCE {
+    management UAVManagementContainer,
+    alacarte UAVAlacarteContainer
+}
+
+-- --------------------------------------------------------------------------
+-- Modified DENM Management Container
+-- --------------------------------------------------------------------------
+-- This follows the EN 302 637-3 V1.3.1 ManagementContainer organization while
+-- replacing ReferencePosition by UAVReferencePosition to support the extended
+-- altitude range.  StationType is reused; a UAV-specific value is assigned by
+-- the V2XPlus profile rather than changing its 8-bit representation.
+
+UAVManagementContainer ::= SEQUENCE {
+    actionID ActionID,
+    detectionTime TimestampIts,
+    referenceTime TimestampIts,
+    termination Termination OPTIONAL,
+    eventPosition UAVReferencePosition,
+    relevanceDistance RelevanceDistance OPTIONAL,
+    relevanceTrafficDirection RelevanceTrafficDirection OPTIONAL,
+    validityDuration ValidityDuration DEFAULT defaultValidity,
+    transmissionInterval TransmissionInterval OPTIONAL,
+    stationType StationType
+}
+
+defaultValidity INTEGER ::= 600
+
+Termination ::= ENUMERATED {
+    isCancellation (0),
+    isNegation (1)
+}
+
+UAVReferencePosition ::= SEQUENCE {
+    latitude Latitude,
+    longitude Longitude,
+    positionConfidenceEllipse PosConfidenceEllipse,
+    altitude UAVAltitude
+}
+
+UAVAltitude ::= SEQUENCE {
+    altitudeValue UAVAltitudeValue,
+    altitudeConfidence AltitudeConfidence
+}
+
+UAVAltitudeValue ::= INTEGER (-100000..20000000)
+
+-- --------------------------------------------------------------------------
+-- A-la-carte event dispatcher
+-- --------------------------------------------------------------------------
+
+UAVAlacarteType ::= INTEGER {
+    refuelRequest (1),
+    refuelAccept (2),
+    refuelReject (3),
+    dockingTermination (4)
+} (0..255)
+
+-- Information-object class used to bind the 8-bit a-la-carte type to the
+-- corresponding event-specific ASN.1 type.
+UAV-EVENT ::= CLASS {
+    &Type,
+    &id UAVAlacarteType UNIQUE
+}
+WITH SYNTAX { &Type IDENTIFIED BY &id }
+
+UAVEventSet UAV-EVENT ::= {
+    { RefuelRequestContainer IDENTIFIED BY refuelRequest } |
+    { RefuelAcceptContainer IDENTIFIED BY refuelAccept } |
+    { RefuelRejectContainer IDENTIFIED BY refuelReject } |
+    { DockingTerminationContainer IDENTIFIED BY dockingTermination }
+}
+
+UAVAlacarteContainer ::= SEQUENCE {
+    alacarteType UAV-EVENT.&id({UAVEventSet}),
+    eventData UAV-EVENT.&Type({UAVEventSet}{@alacarteType})
+}
+
+-- --------------------------------------------------------------------------
+-- Refuel request
+-- --------------------------------------------------------------------------
+-- The field organization follows the current dissertation text.  Exact ranges
+-- of newly introduced scalar fields must be copied from the corresponding
+-- protocol figures before using the schema for exact PER lengths.
+
+RefuelRequestContainer ::= SEQUENCE {
+    destinationStationID StationID,
+    refuelingRequirement RefuelingRequirement,
+    landingRequirement LandingRequirement
+}
+
+RefuelingRequirement ::= SEQUENCE {
+    arrivalTime PathDeltaTime,
+    hoverTime PathDeltaTime,
+    fuelType FuelType,
+    requestedRefuelAmount RefuelAmount,
+    refuelMechanism RefuelMechanism,
+    chargingInterface ChargingInterface
+}
+
+LandingRequirement ::= SEQUENCE {
+    landingPadLength LandingPadDimension,
+    landingPadWidth LandingPadDimension
+}
+
+-- --------------------------------------------------------------------------
+-- Refuel acceptance
+-- --------------------------------------------------------------------------
+
+RefuelAcceptContainer ::= SEQUENCE {
+    destinationStationID StationID,
+    serviceWindowStart PathDeltaTime,
+    serviceWindowEnd PathDeltaTime,
+    fuelType FuelType,
+    refuelMechanism RefuelMechanism,
+    chargingInterface ChargingInterface,
+    approvedRefuelAmount RefuelAmount
+}
+
+-- --------------------------------------------------------------------------
+-- Refuel rejection
+-- --------------------------------------------------------------------------
+
+RefuelRejectContainer ::= SEQUENCE {
+    destinationStationID StationID,
+    rejectionReason RejectionReason,
+    timeout PathDeltaTime OPTIONAL
+}
+
+-- --------------------------------------------------------------------------
+-- Docking termination
+-- --------------------------------------------------------------------------
+-- The dissertation describes a list of destination station identifiers and an
+-- acceptance flag indicating the selected station.  ASN.1 SEQUENCE OF is used
+-- so its encoded length determinant represents the list length.
+
+DockingTerminationContainer ::= SEQUENCE OF DockingStationDecision
+
+DockingStationDecision ::= SEQUENCE {
+    destinationStationID StationID,
+    accepted BOOLEAN
+}
+
+-- --------------------------------------------------------------------------
+-- New V2XPlus event data elements
+-- --------------------------------------------------------------------------
+-- TODO: replace the following unconstrained placeholder definitions with the
+-- exact thesis-defined constraints/enumerations from the UAV-DENM figures.
+-- They are intentionally left unconstrained so that no unsupported bit widths
+-- or value ranges are invented.
+
+FuelType ::= INTEGER
+RefuelAmount ::= INTEGER
+RefuelMechanism ::= INTEGER
+ChargingInterface ::= INTEGER
+LandingPadDimension ::= INTEGER
+RejectionReason ::= INTEGER
+
+END

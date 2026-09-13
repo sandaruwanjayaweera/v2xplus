@@ -1,0 +1,240 @@
+-- ============================================================================
+-- UAV-CAM-PDU-Descriptions.asn
+-- Research draft for the V2XPlus UAV-CAM proposed in the dissertation.
+--
+-- This is NOT an ETSI-standardized ASN.1 module and intentionally has no ETSI
+-- object identifier.  Its organization follows ETSI EN 302 637-2 V1.4.1.
+-- Unmodified ETSI data types are imported from ITS-Container (CDD version 2).
+--
+-- Encoding assumption: ASN.1 Unaligned Packed Encoding Rules (UPER), following
+-- the CAM specification.
+--
+-- IMPORTANT OPEN ITEMS are marked with "TODO" or "CHECK" comments.  In
+-- particular, the exact constraints of the Facility Container are not present
+-- in the currently supplied thesis text/figures, so placeholder unconstrained
+-- types are used there.  Replace them before using this module for bit-exact
+-- packet-size calculations.
+-- ============================================================================
+
+UAV-CAM-PDU-Descriptions
+DEFINITIONS AUTOMATIC TAGS ::=
+BEGIN
+
+IMPORTS
+    ItsPduHeader,
+    StationType,
+    StationID,
+    Latitude,
+    Longitude,
+    PosConfidenceEllipse,
+    AltitudeConfidence,
+    Heading,
+    Speed,
+    LongitudinalAcceleration,
+    Curvature,
+    CurvatureCalculationMode,
+    YawRate,
+    LateralAcceleration,
+    VerticalAcceleration,
+    VehicleLengthConfidenceIndication,
+    DeltaLatitude,
+    DeltaLongitude,
+    DeltaReferencePosition,
+    PathDeltaTime
+FROM ITS-Container {
+    itu-t (0) identified-organization (4) etsi (0) itsDomain (5)
+    wg1 (1) ts (102894) cdd (2) version (2)
+};
+
+-- --------------------------------------------------------------------------
+-- Root UAV-CAM PDU
+-- --------------------------------------------------------------------------
+
+UAVCAM ::= SEQUENCE {
+    header ItsPduHeader,
+    uavCam UAVCoopAwareness
+}
+
+-- The dedicated UAV-CAM Message ID is carried by header.messageID.
+-- No numeric value is assigned here because the dissertation proposes use of
+-- a dedicated value but does not assign an ETSI-reserved value.
+
+UAVCoopAwareness ::= SEQUENCE {
+    generationDeltaTime GenerationDeltaTime,
+    uavCamParameters UAVCamParameters
+}
+
+GenerationDeltaTime ::= INTEGER {
+    oneMilliSec (1)
+} (0..65535)
+
+-- The Basic Container is always present.  What follows it is selected by the
+-- 3-alternative CHOICE below.  Under UPER this root CHOICE requires 2 selector
+-- bits (values 0..2), matching the proposed 2-bit selection after the Basic
+-- Container.  No extension marker is added here because it would add an
+-- extension-presence bit to the encoding.
+
+UAVCamParameters ::= SEQUENCE {
+    basicContainer UAVBasicContainer,
+    followingContainer UAVCamFollowingContainer
+}
+
+UAVCamFollowingContainer ::= CHOICE {
+    noAdditionalContainer NULL,
+    highFrequencyContainer UAVHighFrequencyBlock,
+    facilityContainer FacilityContainer
+}
+
+-- The UAV Container is represented as OPTIONAL.  With one OPTIONAL component
+-- in this SEQUENCE, UPER encodes one presence bit before the sequence content.
+-- This implements the proposed 1-bit indication after the HF Container without
+-- introducing a second CHOICE selector.
+
+UAVHighFrequencyBlock ::= SEQUENCE {
+    highFrequencyContainer UAVHighFrequencyContainer,
+    uavContainer UAVContainer OPTIONAL
+}
+
+-- --------------------------------------------------------------------------
+-- Modified Basic Container
+-- --------------------------------------------------------------------------
+
+UAVBasicContainer ::= SEQUENCE {
+    stationType StationType,
+    referencePosition UAVReferencePosition
+}
+
+UAVReferencePosition ::= SEQUENCE {
+    latitude Latitude,
+    longitude Longitude,
+    positionConfidenceEllipse PosConfidenceEllipse,
+    altitude UAVAltitude
+}
+
+UAVAltitude ::= SEQUENCE {
+    altitudeValue UAVAltitudeValue,
+    altitudeConfidence AltitudeConfidence
+}
+
+-- 1 cm resolution.  The stated range contains 20 100 001 values and therefore
+-- requires 25 bits as a constrained whole number under UPER.
+UAVAltitudeValue ::= INTEGER (-100000..20000000)
+
+-- --------------------------------------------------------------------------
+-- Modified High-Frequency Container
+-- --------------------------------------------------------------------------
+
+UAVHighFrequencyContainer ::= SEQUENCE {
+    heading Heading,
+    verticalHeading VerticalHeading,
+    speed Speed,
+    driveDirection UAVDriveDirection,
+    vehicleLength UAVVehicleLength,
+    vehicleWidth UAVDimensionValue,
+    vehicleHeight UAVDimensionValue,
+    longitudinalAcceleration LongitudinalAcceleration,
+    curvature Curvature,
+    curvatureCalculationMode CurvatureCalculationMode,
+    yawRate YawRate,
+    lateralAcceleration LateralAcceleration,
+    verticalAcceleration VerticalAcceleration
+}
+
+-- 0.1 degree resolution.  The semantics in V2XPlus are vertical orientation
+-- relative to the horizontal plane; therefore this is defined locally rather
+-- than reusing the terrestrial HeadingValue semantic definition.
+VerticalHeading ::= INTEGER {
+    oneTenthDegree (1),
+    unavailable (3601)
+} (0..3601)
+
+-- Motion direction is no longer the forward/backward enumeration of CAM.
+-- Its horizontal component reuses Heading (value + confidence), while the
+-- vertical component uses the newly defined VerticalHeading.
+UAVDriveDirection ::= SEQUENCE {
+    horizontalDirection Heading,
+    verticalDirection VerticalHeading
+}
+
+UAVVehicleLength ::= SEQUENCE {
+    vehicleLengthValue UAVDimensionValue,
+    vehicleLengthConfidenceIndication VehicleLengthConfidenceIndication
+}
+
+-- Unit: 1 cm.
+-- CHECK: the thesis figure currently labels this field as 14 bits with a
+-- range 0..16384.  That inclusive range has 16 385 values and requires
+-- 15 UPER bits.  If a 14-bit field is intended, use 0..16383 instead.
+UAVDimensionValue ::= INTEGER (0..16384)
+
+-- --------------------------------------------------------------------------
+-- UAV Container
+-- --------------------------------------------------------------------------
+
+UAVContainer ::= SEQUENCE {
+    safetyAreaRadius SafetyAreaRadius,
+    pathHistory UAVPathHistory,
+    futureLocations UAVPathHistory
+}
+
+-- A zero-length pathHistory/futureLocations list represents absence of that
+-- information.  This preserves the original V2XPlus design in which the list
+-- length itself identifies whether path points are present.
+UAVPathHistory ::= SEQUENCE (SIZE(0..40)) OF UAVPathPoint
+
+UAVPathPoint ::= SEQUENCE {
+    pathPosition UAVDeltaReferencePosition,
+    pathDeltaTime PathDeltaTime OPTIONAL
+}
+
+UAVDeltaReferencePosition ::= SEQUENCE {
+    deltaLatitude DeltaLatitude,
+    deltaLongitude DeltaLongitude,
+    deltaAltitude UAVDeltaAltitude
+}
+
+-- Unit: 1 cm.
+-- CHECK: the published UAV-CAM figure labels this as 21 bits with the range
+-- -1048576..1048576.  The inclusive range contains 2 097 153 values and
+-- therefore requires 22 UPER bits.  For exactly 21 bits, the upper endpoint
+-- would need to be 1048575 (or another 2^21-value interval).
+UAVDeltaAltitude ::= INTEGER (-1048576..1048576)
+
+-- Unit: 1 m.
+-- CHECK: similarly, 0..16384 contains 16 385 values and requires 15 UPER bits,
+-- although the earlier V2XPlus figure labels SafetyAreaRadius as 14 bits.
+SafetyAreaRadius ::= INTEGER (0..16384)
+
+-- --------------------------------------------------------------------------
+-- Facility Container
+-- --------------------------------------------------------------------------
+-- The dissertation text specifies the semantic fields below, but the exact
+-- numerical constraints/bit widths of the new fields are contained in a
+-- Facility Container figure that is not part of the currently supplied source
+-- material.  The unconstrained INTEGER definitions below are deliberate
+-- placeholders; they are syntactically valid ASN.1 but MUST NOT be used for
+-- bit-exact UPER packet-size calculations until the thesis-defined constraints
+-- are inserted.
+--
+-- The number of facilities is represented by the SEQUENCE OF length
+-- determinant.  Therefore an additional semantic "numberOfFacilities" field
+-- is not needed unless the protocol intentionally wants to transmit it twice.
+
+FacilityContainer ::= SEQUENCE OF FacilityEntry
+
+FacilityEntry ::= SEQUENCE {
+    stationID StationID,
+    facilityType FacilityType,
+    totalCapacity FacilityCapacity,
+    freeCapacity FacilityCapacity,
+    availableTime FacilityAvailableTime,
+    facilityPosition DeltaReferencePosition
+}
+
+-- TODO: replace these unconstrained placeholders with the exact constraints
+-- from the Facility Container diagram.
+FacilityType ::= INTEGER
+FacilityCapacity ::= INTEGER
+FacilityAvailableTime ::= INTEGER
+
+END
