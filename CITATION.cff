@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "If you use this software/specification, please cite it as below."
+title: "V2XPlus ASN.1 Specification for UAV-CAM and UAV-DENM"
+type: software
+authors:
+  - family-names: Jayaweera
+    given-names: Sandaruwan Gayantha
+version: 1.0.0
+date-released: 2026-09-15
+repository-code: "https://github.com/sandaruwanjayaweera/v2xplus"
+abstract: >
+  ASN.1 definitions of the UAV-CAM and UAV-DENM message structures
+  developed as part of the V2XPlus framework for integrating UAVs
+  into cooperative ITS communications.
